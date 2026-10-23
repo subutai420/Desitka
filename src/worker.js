@@ -129,8 +129,14 @@ export class Room extends DurableObject {
     else {
       if (s.players.length >= 12) return this.send(ws, { type: "error", code: "full", msg: "Místnost je plná (max. 12 hráčů)." });
       s.players.push({ id: pid, name, joinedAt: Date.now() });
+      // Během prvního kola se nový hráč rovnou zařadí do hry (na konec pořadí, s 0 body).
+      if ((s.phase === "playing" || s.phase === "roundEnd") && s.roundNo === 1 && s.order && !s.order.includes(pid)) {
+        s.order.push(pid);
+        s.scores[pid] = 0;
+        if (s.round) { s.round.status[pid] = s.phase === "playing" ? "in" : "passed"; s.round.pot[pid] = 0; }
+      }
     }
-    if (s.names && s.names[pid]) s.names[pid] = name;
+    if (s.names && s.order && s.order.includes(pid)) s.names[pid] = name;
     ws.serializeAttachment({ pid });
     await this.save();
     this.broadcast();
