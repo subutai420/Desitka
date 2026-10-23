@@ -52,6 +52,7 @@ export class Room extends DurableObject {
         if (!host || s.phase !== "lobby") return;
         if ([10, 15, 20].includes(msg.target)) s.target = msg.target;
         if (typeof msg.drinks === "boolean") s.drinks = msg.drinks;
+        if ([0, 30, 60].includes(msg.turnLimit)) s.turnLimit = msg.turnLimit;
         break;
       case "start":
         // Po konci hry může novou hru spustit kdokoli z hráčů (hostitel mohl odejít).
@@ -87,9 +88,24 @@ export class Room extends DurableObject {
   async webSocketClose(ws) { this.broadcast(ws); }
   async webSocketError(ws) { this.broadcast(ws); }
 
+  // Jeden alarm obslouží obojí: vypršení času na tah i smazání neaktivní místnosti.
   async alarm() {
-    await this.ctx.storage.deleteAll();
-    this.s = null;
+    const s = this.s;
+    if (!s) return;
+    const now = Date.now();
+    const r = s.round;
+    if (s.phase === "playing" && r && r.deadline && now >= r.deadline - 50) {
+      this.timeout(r.turn);
+      await this.save();
+      this.broadcast();
+      return;
+    }
+    if (now >= (s.lastActive || 0) + ROOM_TTL_MS) {
+      await this.ctx.storage.deleteAll();
+      this.s = null;
+      return;
+    }
+    await this.schedule();
   }
 
   /* ---------- helpers ---------- */
@@ -109,8 +125,34 @@ export class Room extends DurableObject {
   }
 
   async save() {
+    this.s.lastActive = Date.now();
     await this.ctx.storage.put("s", this.s);
-    await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
+    await this.schedule();
+  }
+
+  async schedule() {
+    const s = this.s;
+    let at = (s.lastActive || Date.now()) + ROOM_TTL_MS;
+    if (s.phase === "playing" && s.round && s.round.deadline) at = Math.min(at, s.round.deadline);
+    await this.ctx.storage.setAlarm(at);
+  }
+
+  limit() { return this.s.turnLimit ?? 30; }
+
+  setTurn(pid) {
+    const r = this.s.round;
+    r.turn = pid;
+    r.deadline = pid && this.limit() ? Date.now() + this.limit() * 1000 : null;
+  }
+
+  // Vypršený čas se počítá jako špatná odpověď: body z kola propadnou a hráč je z kola venku.
+  timeout(pid) {
+    const s = this.s, r = s.round;
+    if (s.phase !== "playing" || r.turn !== pid || r.status[pid] !== "in") return;
+    r.pot[pid] = 0;
+    r.status[pid] = "out";
+    r.last = { kind: "timeout", pid, t: Date.now() };
+    this.advance();
   }
 
   send(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch {} }
@@ -121,7 +163,7 @@ export class Room extends DurableObject {
     if (!/^[a-z0-9]{4,24}$/i.test(pid) || !name) return this.send(ws, { type: "error", code: "bad", msg: "Chybí jméno." });
     if (!this.s) {
       if (!msg.create) return this.send(ws, { type: "error", code: "noroom", msg: "Místnost s tímto kódem neexistuje." });
-      this.s = { hostId: pid, phase: "lobby", target: 15, drinks: false, players: [], roundNo: 0, used: [], order: null, scores: null, round: null };
+      this.s = { hostId: pid, phase: "lobby", target: 15, drinks: false, turnLimit: 30, players: [], roundNo: 0, used: [], order: null, scores: null, round: null };
     }
     const s = this.s;
     const p = s.players.find((x) => x.id === pid);
@@ -160,7 +202,8 @@ export class Room extends DurableObject {
     s.used = [...used, card];
     const status = {}, pot = {};
     s.order.forEach((p) => { status[p] = "in"; pot[p] = 0; });
-    s.round = { card, taken: Array(10).fill(null), status, pot, turn: s.order[starter], starter, last: null };
+    s.round = { card, taken: Array(10).fill(null), status, pot, turn: null, deadline: null, starter, last: null };
+    this.setTurn(s.order[starter]);
     s.roundNo += 1;
     s.phase = "playing";
   }
@@ -195,13 +238,13 @@ export class Room extends DurableObject {
       s.order.forEach((p) => { s.scores[p] += r.pot[p] || 0; });
       const max = Math.max(...s.order.map((p) => s.scores[p]));
       s.phase = max >= s.target ? "over" : "roundEnd";
-      r.turn = null;
+      this.setTurn(null);
       return;
     }
     const idx = s.order.indexOf(r.turn);
     for (let k = 1; k <= s.order.length; k++) {
       const p = s.order[(idx + k) % s.order.length];
-      if (r.status[p] === "in") { r.turn = p; break; }
+      if (r.status[p] === "in") { this.setTurn(p); break; }
     }
   }
 
@@ -209,14 +252,14 @@ export class Room extends DurableObject {
   view(online) {
     const s = this.s;
     const v = {
-      phase: s.phase, hostId: s.hostId, target: s.target, drinks: s.drinks, roundNo: s.roundNo,
+      phase: s.phase, hostId: s.hostId, target: s.target, drinks: s.drinks, turnLimit: this.limit(), roundNo: s.roundNo, serverNow: Date.now(),
       players: s.players.map((p) => ({ id: p.id, name: p.name, online: online.has(p.id) })),
       order: s.order, names: s.names || {}, scores: s.scores, round: null,
     };
     if (s.round && s.phase !== "lobby") {
       const r = s.round, card = CARDS[r.card], reveal = s.phase !== "playing";
       v.round = {
-        turn: r.turn, status: r.status, pot: r.pot, starter: r.starter,
+        turn: r.turn, deadline: r.deadline || null, status: r.status, pot: r.pot, starter: r.starter,
         card: { q: card.q, o: card.o, items: card.i.map((x) => x[0]) },
         taken: r.taken.map((t, i) => (t ? { ...t, ans: card.i[i][1] } : null)),
         answers: reveal ? card.i.map((x) => x[1]) : null,

@@ -82,6 +82,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .tray .in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
 .tray .btns{display:flex;flex-wrap:wrap;gap:8px}
 .tray .btns button{flex:1 1 auto}
+.timer{display:flex;align-items:center;gap:10px;font-weight:700;font-variant-numeric:tabular-nums;font-size:14px}
+.timer .bar{flex:1;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.timer .bar i{display:block;height:100%;background:var(--brass);transition:width .25s linear}
+.timer.low{color:var(--bad)} .timer.low .bar i{background:var(--bad)}
 .toast{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;font-weight:600;z-index:9;max-width:90vw}
 .winner{font-family:var(--display);font-size:24px;color:var(--brass)}
 @media (prefers-reduced-motion:no-preference){.slot,.chip{transition:background .2s,border-color .2s}}
@@ -127,6 +131,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <ul class="plist" id="lobbyPlayers"></ul>
     <div id="hostCfg" class="row" hidden>
       <label for="targetSel">Hraje se do<select id="targetSel"><option value="10">10 bodů</option><option value="15">15 bodů</option><option value="20">20 bodů</option></select></label>
+      <label for="limitSel">Čas na tah<select id="limitSel"><option value="30">30 sekund</option><option value="60">60 sekund</option><option value="0">Bez limitu</option></select></label>
       <label for="drinkSel">Pitná varianta<select id="drinkSel"><option value="0">Vypnuto</option><option value="1">Kdo se splete, pije</option></select></label>
     </div>
     <p class="muted" id="lobbyCfgInfo" style="margin:0"></p>
@@ -155,6 +160,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 </div>
 
 <div class="tray" id="tray" hidden><div class="in">
+  <div class="timer" id="timer" hidden><span class="bar"><i id="timerBar"></i></span><span id="timerTxt"></span></div>
   <div id="trayMsg" style="font-weight:600"></div>
   <div class="btns" id="trayBtns"></div>
 </div></div>
@@ -168,6 +174,7 @@ function rid(){return Math.random().toString(36).slice(2,12)}
 const me={id:store('d10pid')||rid(),name:store('d10name')||''};
 store('d10pid',me.id);
 
+let clockOffset=0;
 let ws=null,code=null,room=null,sel=null,wantCreate=false,retry=0,closing=false,lastEventKey=null;
 
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
@@ -193,7 +200,7 @@ function connect(){
   sock.onopen=()=>{if(sock!==ws)return;retry=0;$('#conn').hidden=true;sock.send(JSON.stringify({type:'join',pid:me.id,name:me.name,create:wantCreate}))};
   sock.onmessage=e=>{if(sock!==ws)return;let m;try{m=JSON.parse(e.data)}catch{return}
     if(m.type==='error'){homeErr(m.msg);leave(true);return}
-    if(m.type==='state'){wantCreate=false;room=m.state;render()}};
+    if(m.type==='state'){wantCreate=false;room=m.state;clockOffset=room.serverNow-Date.now();render()}};
   // Reaguje jen aktuální spojení; staré spojení po odchodu z místnosti už nic neobnovuje.
   sock.onclose=()=>{if(sock!==ws||closing||!code)return;$('#conn').hidden=false;
     setTimeout(()=>{if(sock===ws&&code&&!closing)connect()},Math.min(8000,500*2**retry++))};
@@ -221,9 +228,9 @@ function renderLobby(){
     if(p.id===room.hostId)li.append(el('span','badge','hostitel'));ul.append(li)});
   const host=amHost();
   $('#hostCfg').hidden=!host;$('#startBtn').hidden=!host;$('#waitHost').hidden=host;
-  $('#targetSel').value=String(room.target);$('#drinkSel').value=room.drinks?'1':'0';
+  $('#targetSel').value=String(room.target);$('#limitSel').value=String(room.turnLimit);$('#drinkSel').value=room.drinks?'1':'0';
   $('#lobbyCfgInfo').textContent=host?(room.players.length<2?'Hrát se dá i o samotě, ale s víc lidmi je to zábavnější.':''):
-    'Hraje se do '+room.target+' bodů'+(room.drinks?', pitná varianta zapnutá.':'.');
+    'Hraje se do '+room.target+' bodů, '+(room.turnLimit?room.turnLimit+' s na tah':'bez časového limitu')+(room.drinks?', pitná varianta zapnutá.':'.');
 }
 
 function statusText(p,r){if(room.phase!=='playing')return '';
@@ -243,6 +250,7 @@ function renderGame(){
   if(L){let t,cls='event';
     if(L.kind==='answer'){t=nameOf(L.pid)+': '+L.item+' → '+L.choice+(L.ok?' ✓ správně':' ✗ špatně, správně je '+L.ans);
       cls+=L.ok?' ok':' bad';if(!L.ok&&room.drinks)t+='. Na zdraví, panák!'}
+    else if(L.kind==='timeout'){t=nameOf(L.pid)+' nestihl/a odpovědět, body z kola propadly'+(room.drinks?'. Na zdraví, panák!':'.');cls+=' bad'}
     else if(L.kind==='pass')t=nameOf(L.pid)+' pasuje a schovává si '+L.pot+' b.';
     else t=nameOf(L.pid)+' byl/a přeskočen/a.';
     ev.textContent=t;ev.className=cls;ev.hidden=false;
@@ -288,7 +296,18 @@ function copy(text,ok){if(navigator.clipboard)navigator.clipboard.writeText(text
 $('#copyBtn').onclick=()=>copy(code,'Kód zkopírován');
 $('#shareBtn').onclick=()=>{const u=shareUrl();if(navigator.share)navigator.share({title:'Desítka po setmění',text:'Připoj se do hry, kód '+code,url:u}).catch(()=>{});else copy(u,'Odkaz zkopírován')};
 $('#targetSel').onchange=e=>send({type:'config',target:+e.target.value});
+$('#limitSel').onchange=e=>send({type:'config',turnLimit:+e.target.value});
 $('#drinkSel').onchange=e=>send({type:'config',drinks:e.target.value==='1'});
+// odpočet času na tah (server rozhoduje, tady se jen zobrazuje)
+function tick(){const t=$('#timer');
+  const r=room&&room.round;const on=room&&room.phase==='playing'&&r&&r.deadline;
+  if(!on){t.hidden=true;return}
+  const left=Math.max(0,(r.deadline-(Date.now()+clockOffset))/1000);
+  t.hidden=false;t.classList.toggle('low',left<=10);
+  $('#timerBar').style.width=(100*left/(room.turnLimit||30))+'%';
+  $('#timerTxt').textContent=Math.ceil(left)+' s'+(r.turn===me.id?'':' · '+nameOf(r.turn));
+  if(r.turn===me.id&&left<=5.05&&left>4.8)toast('Pospěš, zbývá 5 sekund!')}
+setInterval(tick,250);
 // po obnovení stránky se vrátí do místnosti
 if(/^[A-Z]{4}$/.test(h)&&me.name){code=h;connect()}
 </script>
