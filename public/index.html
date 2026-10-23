@@ -86,6 +86,19 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .timer .bar{flex:1;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
 .timer .bar i{display:block;height:100%;background:var(--brass);transition:width .25s linear}
 .timer.low{color:var(--bad)} .timer.low .bar i{background:var(--bad)}
+.clock{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 18px -12px rgba(0,0,0,.5)}
+.clock .ring{position:relative;flex:0 0 58px;height:58px}
+.clock svg{width:58px;height:58px;transform:rotate(-90deg)}
+.clock circle{fill:none;stroke-width:6}
+.clock .trk{stroke:var(--surface2)}
+.clock .arc{stroke:var(--brass);stroke-linecap:round;transition:stroke-dashoffset .25s linear}
+.clock .num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:20px;font-variant-numeric:tabular-nums}
+.clock .who{display:flex;flex-direction:column;min-width:0}
+.clock .who b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clock.mine{border-color:var(--brass);box-shadow:0 0 0 2px var(--brass) inset}
+.clock.low .arc{stroke:var(--bad)} .clock.low .num{color:var(--bad)}
+@media (prefers-reduced-motion:no-preference){.clock.low .num{animation:pulse 1s ease-in-out infinite}}
+@keyframes pulse{50%{transform:scale(1.12)}}
 .toast{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;font-weight:600;z-index:9;max-width:90vw}
 .winner{font-family:var(--display);font-size:24px;color:var(--brass)}
 @media (prefers-reduced-motion:no-preference){.slot,.chip{transition:background .2s,border-color .2s}}
@@ -95,7 +108,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <div class="wrap">
   <div class="brand">
     <div class="logo"><span class="ten">10</span>Desítka po setmění</div>
-    <span class="row" style="flex:0 0 auto;align-items:center;gap:10px"><span class="tag" id="roomTag" hidden></span><button class="small ghost" id="exitBtn" hidden>Odejít</button></span>
+    <span class="row" style="flex:0 0 auto;align-items:center;gap:10px"><span class="tag" id="roomTag" hidden style="flex:0 0 auto"></span><button class="small ghost" id="exitBtn" hidden style="flex:0 0 auto">Odejít</button></span>
   </div>
 
   <!-- HOME -->
@@ -144,6 +157,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
   <!-- GAME -->
   <section id="game" hidden style="display:flex;flex-direction:column;gap:16px">
+    <div class="clock" id="clock" hidden>
+      <div class="ring"><svg viewBox="0 0 58 58" aria-hidden="true"><circle class="trk" cx="29" cy="29" r="25"/><circle class="arc" id="clockArc" cx="29" cy="29" r="25" stroke-dasharray="157.08" stroke-dashoffset="0"/></svg><span class="num" id="clockNum">30</span></div>
+      <div class="who"><span class="tag">Zbývající čas</span><b id="clockWho"></b></div>
+    </div>
     <div class="scores" id="scores"></div>
     <div class="event" id="event" hidden></div>
     <div class="card">
@@ -200,7 +217,7 @@ function connect(){
   sock.onopen=()=>{if(sock!==ws)return;retry=0;$('#conn').hidden=true;sock.send(JSON.stringify({type:'join',pid:me.id,name:me.name,create:wantCreate}))};
   sock.onmessage=e=>{if(sock!==ws)return;let m;try{m=JSON.parse(e.data)}catch{return}
     if(m.type==='error'){homeErr(m.msg);leave(true);return}
-    if(m.type==='state'){wantCreate=false;room=m.state;clockOffset=room.serverNow-Date.now();render()}};
+    if(m.type==='state'){wantCreate=false;room=m.state;clockOffset=room.serverNow-Date.now();render();tick()}};
   // Reaguje jen aktuální spojení; staré spojení po odchodu z místnosti už nic neobnovuje.
   sock.onclose=()=>{if(sock!==ws||closing||!code)return;$('#conn').hidden=false;
     setTimeout(()=>{if(sock===ws&&code&&!closing)connect()},Math.min(8000,500*2**retry++))};
@@ -299,14 +316,20 @@ $('#targetSel').onchange=e=>send({type:'config',target:+e.target.value});
 $('#limitSel').onchange=e=>send({type:'config',turnLimit:+e.target.value});
 $('#drinkSel').onchange=e=>send({type:'config',drinks:e.target.value==='1'});
 // odpočet času na tah (server rozhoduje, tady se jen zobrazuje)
-function tick(){const t=$('#timer');
+function tick(){const t=$('#timer'),c=$('#clock');
   const r=room&&room.round;const on=room&&room.phase==='playing'&&r&&r.deadline;
-  if(!on){t.hidden=true;return}
+  if(!on){t.hidden=true;c.hidden=true;return}
+  const total=room.turnLimit||30;
   const left=Math.max(0,(r.deadline-(Date.now()+clockOffset))/1000);
-  t.hidden=false;t.classList.toggle('low',left<=10);
-  $('#timerBar').style.width=(100*left/(room.turnLimit||30))+'%';
-  $('#timerTxt').textContent=Math.ceil(left)+' s'+(r.turn===me.id?'':' · '+nameOf(r.turn));
-  if(r.turn===me.id&&left<=5.05&&left>4.8)toast('Pospěš, zbývá 5 sekund!')}
+  const secs=Math.ceil(left),low=left<=10,mine=r.turn===me.id;
+  t.hidden=false;t.classList.toggle('low',low);
+  $('#timerBar').style.width=(100*left/total)+'%';
+  $('#timerTxt').textContent=secs+' s';
+  c.hidden=false;c.classList.toggle('low',low);c.classList.toggle('mine',mine);
+  $('#clockNum').textContent=secs;
+  $('#clockArc').style.strokeDashoffset=String(157.08*(1-left/total));
+  $('#clockWho').textContent=mine?'Jsi na tahu!':'Na tahu: '+nameOf(r.turn);
+  if(mine&&left<=5.05&&left>4.8)toast('Pospěš, zbývá 5 sekund!')}
 setInterval(tick,250);
 // po obnovení stránky se vrátí do místnosti
 if(/^[A-Z]{4}$/.test(h)&&me.name){code=h;connect()}
