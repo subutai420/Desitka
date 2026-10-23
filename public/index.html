@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Desítka po setmění</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one-column game table — scoreboard strip, question card, ten numbered peg slots, sticky action tray */
+:root{
+  --bg:#f2eff6;--surface:#ffffff;--surface2:#ebe6f2;--line:#d9d0e5;--fg:#1d1626;--muted:#675c76;
+  --brass:#94660a;--brass-soft:#f3e4c2;--ok:#1d855a;--ok-soft:#d8f1e5;--bad:#bf3a45;--bad-soft:#f8dcdf;
+  --display:"Unbounded","Arial Black",system-ui,sans-serif;--body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#16111e;--surface:#211a2c;--surface2:#2a2238;--line:#3b3049;--fg:#f1ecf7;--muted:#a99eba;
+  --brass:#e3b24d;--brass-soft:#3a2f1a;--ok:#55c792;--ok-soft:#1b3529;--bad:#ec6b73;--bad-soft:#3d1f25;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#16111e;--surface:#211a2c;--surface2:#2a2238;--line:#3b3049;--fg:#f1ecf7;--muted:#a99eba;
+  --brass:#e3b24d;--brass-soft:#3a2f1a;--ok:#55c792;--ok-soft:#1b3529;--bad:#ec6b73;--bad-soft:#3d1f25;color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 120px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.logo{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.logo .ten{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--brass);color:var(--bg);font-size:15px}
+.tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px}
+label{font-weight:600;font-size:13px;display:flex;flex-direction:column;gap:6px}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;width:100%}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>*{flex:1 1 160px;min-width:0}
+button{font:inherit;font-weight:700;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--fg);padding:11px 16px}
+button.primary{background:var(--brass);border-color:var(--brass);color:var(--bg)}
+button.ghost{background:transparent}
+button.small{padding:7px 11px;font-size:13px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.muted{color:var(--muted)}
+.err{color:var(--bad);font-weight:600;font-size:14px}
+.rules{font-size:14px;color:var(--muted);display:grid;gap:6px;padding-left:18px;margin:0}
+.code{font-family:var(--display);font-weight:800;font-size:40px;letter-spacing:.14em;color:var(--brass)}
+.plist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.plist li{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--surface2);border-radius:9px}
+.badge{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brass)}
+/* scoreboard */
+.scores{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.chip{flex:0 0 auto;min-width:112px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:flex;flex-direction:column;gap:2px}
+.chip.turn{border-color:var(--brass);box-shadow:0 0 0 2px var(--brass) inset}
+.chip.out{opacity:.55}
+.chip .n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.chip .s{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
+.chip .s small{font-family:var(--body);font-size:12px;color:var(--muted);font-weight:600}
+.chip .st{font-size:12px;color:var(--muted);font-weight:600}
+.pot{color:var(--ok);font-weight:800}
+/* card */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 20px;display:flex;flex-direction:column;gap:16px}
+.q{font-size:clamp(19px,4.4vw,26px);font-weight:700}
+.opts{font-size:13px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:420px){.grid{grid-template-columns:1fr}}
+.slot{display:flex;align-items:center;gap:10px;text-align:left;font-weight:600;padding:10px 12px;border-radius:12px;background:var(--surface2);border:1px solid transparent;min-height:54px}
+.slot .peg{flex:0 0 28px;height:28px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:11px;background:var(--bg);border:2px solid var(--line);color:var(--muted)}
+.slot .txt{min-width:0;display:flex;flex-direction:column}
+.slot .ans{font-size:12px;font-weight:700}
+.slot.open.can:hover{border-color:var(--brass)}
+.slot.sel{border-color:var(--brass);background:var(--brass-soft)}
+.slot.ok{background:var(--ok-soft)} .slot.ok .peg{border-color:var(--ok);background:var(--ok);color:var(--bg)} .slot.ok .ans{color:var(--ok)}
+.slot.bad{background:var(--bad-soft)} .slot.bad .peg{border-color:var(--bad);background:var(--bad);color:var(--bg)} .slot.bad .ans{color:var(--bad)}
+.slot.rev .ans{color:var(--muted)}
+.slot:disabled{opacity:1;cursor:default}
+.event{font-weight:600;padding:10px 14px;border-radius:10px;background:var(--surface2)}
+.event.ok{background:var(--ok-soft);color:var(--ok)} .event.bad{background:var(--bad-soft);color:var(--bad)}
+/* tray */
+.tray{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);z-index:5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.tray .in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.tray .btns{display:flex;flex-wrap:wrap;gap:8px}
+.tray .btns button{flex:1 1 auto}
+.toast{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;font-weight:600;z-index:9;max-width:90vw}
+.winner{font-family:var(--display);font-size:24px;color:var(--brass)}
+@media (prefers-reduced-motion:no-preference){.slot,.chip{transition:background .2s,border-color .2s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo"><span class="ten">10</span>Desítka po setmění</div>
+    <span class="tag" id="roomTag" hidden></span>
+  </div>
+
+  <!-- HOME -->
+  <section id="home" class="panel">
+    <h2>Kvíz pro dospělé, kde hraje i nervy</h2>
+    <p class="muted" style="margin:0">Každá karta má otázku a deset položek. Postupně na ně odpovídáte, za každou správnou bod. Kdo se splete, přijde o všechno z kola. Pasovat se vyplatí, ale kdy?</p>
+    <label for="nameIn">Tvoje jméno<input id="nameIn" maxlength="20" placeholder="např. Dan" autocomplete="nickname"></label>
+    <div class="row">
+      <button class="primary" id="createBtn">Založit místnost</button>
+    </div>
+    <div class="row">
+      <label for="codeIn">Kód místnosti<input id="codeIn" maxlength="4" placeholder="ABCD" style="text-transform:uppercase;letter-spacing:.2em;font-weight:700"></label>
+      <button id="joinBtn">Připojit se</button>
+    </div>
+    <p class="err" id="homeErr" hidden></p>
+    <ul class="rules">
+      <li>Na tahu buď odpovíš na jednu volnou položku, nebo pasuješ a body z kola si schováš.</li>
+      <li>Špatná odpověď = body z kola propadají a jsi z kola venku.</li>
+      <li>Kolo končí, když všichni pasují nebo vypadnou, případně když dojdou položky.</li>
+      <li>Vyhrává, kdo po konci kola první dosáhne cílového skóre.</li>
+    </ul>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="panel" hidden>
+    <div class="tag">Kód místnosti</div>
+    <div class="row" style="align-items:center">
+      <div class="code" id="lobbyCode" style="flex:0 0 auto">----</div>
+      <button class="small ghost" id="copyBtn" style="flex:0 0 auto">Kopírovat kód</button>
+    </div>
+    <p class="muted" style="margin:0">Pošli ostatním odkaz. Každý hraje na svém mobilu, nic se neinstaluje a nikdo se nepřihlašuje.</p>
+    <div class="row"><input id="shareLink" readonly aria-label="Odkaz do místnosti"><button class="small" id="shareBtn" style="flex:0 0 auto">Kopírovat odkaz</button></div>
+    <ul class="plist" id="lobbyPlayers"></ul>
+    <div id="hostCfg" class="row" hidden>
+      <label for="targetSel">Hraje se do<select id="targetSel"><option value="10">10 bodů</option><option value="15">15 bodů</option><option value="20">20 bodů</option></select></label>
+      <label for="drinkSel">Pitná varianta<select id="drinkSel"><option value="0">Vypnuto</option><option value="1">Kdo se splete, pije</option></select></label>
+    </div>
+    <p class="muted" id="lobbyCfgInfo" style="margin:0"></p>
+    <div class="row">
+      <button class="primary" id="startBtn" hidden>Začít hru</button>
+      <button class="ghost" id="leaveBtn">Odejít</button>
+    </div>
+    <p class="muted" id="waitHost" hidden style="margin:0">Čeká se, až hostitel spustí hru.</p>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" hidden style="display:flex;flex-direction:column;gap:16px">
+    <div class="scores" id="scores"></div>
+    <div class="event" id="event" hidden></div>
+    <div class="card">
+      <div class="row" style="align-items:center;justify-content:space-between">
+        <span class="tag" id="roundTag" style="flex:0 0 auto"></span>
+        <span class="opts" id="optsLine" style="flex:0 1 auto;text-align:right"></span>
+      </div>
+      <h3 class="q" id="question"></h3>
+      <div class="grid" id="grid"></div>
+    </div>
+    <p class="muted" id="spectator" hidden style="margin:0">Hra už běží, sleduješ ji jako divák. Do další hry se zapojíš, až hostitel spustí novou.</p>
+    <p class="err" id="conn" hidden style="margin:0">Spojení se ztratilo, připojuji znovu…</p>
+  </section>
+</div>
+
+<div class="tray" id="tray" hidden><div class="in">
+  <div id="trayMsg" style="font-weight:600"></div>
+  <div class="btns" id="trayBtns"></div>
+</div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const $=s=>document.querySelector(s);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+function rid(){return Math.random().toString(36).slice(2,12)}
+const me={id:store('d10pid')||rid(),name:store('d10name')||''};
+store('d10pid',me.id);
+
+let ws=null,code=null,room=null,sel=null,wantCreate=false,retry=0,closing=false,lastEventKey=null;
+
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
+function show(id){['home','lobby','game'].forEach(s=>$('#'+s).hidden=s!==id);$('#tray').hidden=id!=='game';
+  $('#roomTag').hidden=id==='home';if(code)$('#roomTag').textContent='Místnost '+code}
+function homeErr(t){const e=$('#homeErr');e.textContent=t||'';e.hidden=!t}
+function nameOf(id){return (room.names&&room.names[id])||(room.players.find(p=>p.id===id)||{}).name||'Hráč'}
+function isOnline(id){const p=room.players.find(p=>p.id===id);return p?p.online:false}
+function amHost(){return room&&(room.hostId===me.id||!isOnline(room.hostId))}
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
+
+$('#nameIn').value=me.name;
+const h=(location.hash||'').replace('#','').toUpperCase();
+if(/^[A-Z]{4}$/.test(h))$('#codeIn').value=h;
+
+function getName(){const n=$('#nameIn').value.trim().slice(0,20);if(!n){homeErr('Napiš své jméno.');return null}
+  me.name=n;store('d10name',n);return n}
+
+function connect(){
+  closing=false;
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/'+code);
+  ws.onopen=()=>{retry=0;$('#conn').hidden=true;send({type:'join',pid:me.id,name:me.name,create:wantCreate})};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+    if(m.type==='error'){homeErr(m.msg);leave(true);return}
+    if(m.type==='state'){wantCreate=false;room=m.state;render()}};
+  ws.onclose=()=>{if(closing||!code)return;$('#conn').hidden=false;
+    setTimeout(()=>{if(code&&!closing)connect()},Math.min(8000,500*2**retry++))};
+}
+
+function genCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ';return Array.from({length:4},()=>A[Math.floor(Math.random()*A.length)]).join('')}
+function create(){if(!getName())return;homeErr('');code=genCode();wantCreate=true;connect()}
+function join(){if(!getName())return;homeErr('');const c=$('#codeIn').value.trim().toUpperCase();
+  if(!/^[A-Z]{4}$/.test(c)){homeErr('Kód má čtyři písmena.');return}code=c;wantCreate=false;connect()}
+function leave(silent){if(!silent)send({type:'leave'});closing=true;try{ws&&ws.close()}catch(e){}
+  ws=null;code=null;room=null;sel=null;history.replaceState(null,'',location.pathname);show('home')}
+
+function shareUrl(){return location.origin+location.pathname+'#'+code}
+
+/* ---------- render ---------- */
+function render(){if(!code||!room)return;
+  if(location.hash!=='#'+code)history.replaceState(null,'','#'+code);
+  if(room.phase==='lobby'){renderLobby();show('lobby');return}
+  renderGame();show('game')}
+
+function renderLobby(){
+  $('#lobbyCode').textContent=code;$('#shareLink').value=shareUrl();
+  const ul=$('#lobbyPlayers');ul.replaceChildren();
+  room.players.forEach(p=>{const li=el('li');li.append(el('span',null,p.name+(p.id===me.id?' (ty)':'')+(p.online?'':' · offline')));
+    if(p.id===room.hostId)li.append(el('span','badge','hostitel'));ul.append(li)});
+  const host=amHost();
+  $('#hostCfg').hidden=!host;$('#startBtn').hidden=!host;$('#waitHost').hidden=host;
+  $('#targetSel').value=String(room.target);$('#drinkSel').value=room.drinks?'1':'0';
+  $('#lobbyCfgInfo').textContent=host?(room.players.length<2?'Hrát se dá i o samotě, ale s víc lidmi je to zábavnější.':''):
+    'Hraje se do '+room.target+' bodů'+(room.drinks?', pitná varianta zapnutá.':'.');
+}
+
+function statusText(p,r){if(room.phase!=='playing')return '';
+  if(r.turn===p)return 'na tahu';return {in:'ve hře',passed:'pasoval/a',out:'vypadl/a'}[r.status[p]]||''}
+
+function renderGame(){
+  const r=room.round,card=r.card,mine=r.turn===me.id&&room.phase==='playing';
+  $('#spectator').hidden=(room.order||[]).includes(me.id);
+  const sc=$('#scores');sc.replaceChildren();
+  room.order.forEach(p=>{const c=el('div','chip'+(r.turn===p&&room.phase==='playing'?' turn':'')+(room.phase==='playing'&&r.status[p]!=='in'?' out':''));
+    c.append(el('span','n',nameOf(p)+(p===me.id?' (ty)':'')));
+    const s=el('span','s',String(room.scores[p]));s.append(el('small',null,' / '+room.target));c.append(s);
+    const st=el('span','st',(isOnline(p)?'':'offline · ')+statusText(p,r));
+    if(room.phase==='playing'&&r.pot[p]){st.append(document.createTextNode(' · '));st.append(el('span','pot','+'+r.pot[p]))}
+    c.append(st);sc.append(c)});
+  const ev=$('#event');const L=r.last;
+  if(L){let t,cls='event';
+    if(L.kind==='answer'){t=nameOf(L.pid)+': '+L.item+' → '+L.choice+(L.ok?' ✓ správně':' ✗ špatně, správně je '+L.ans);
+      cls+=L.ok?' ok':' bad';if(!L.ok&&room.drinks)t+='. Na zdraví, panák!'}
+    else if(L.kind==='pass')t=nameOf(L.pid)+' pasuje a schovává si '+L.pot+' b.';
+    else t=nameOf(L.pid)+' byl/a přeskočen/a.';
+    ev.textContent=t;ev.className=cls;ev.hidden=false;
+    const key=L.t+':'+L.pid;if(lastEventKey!==null&&key!==lastEventKey&&L.kind==='answer'&&!L.ok&&L.pid===me.id)toast('Smůla, body z kola propadly.');lastEventKey=key}
+  else ev.hidden=true;
+  $('#roundTag').textContent='Kolo '+room.roundNo;
+  $('#optsLine').textContent='Odpovědi: '+card.o.join(' · ');
+  $('#question').textContent=card.q;
+  const g=$('#grid');g.replaceChildren();
+  card.items.forEach((label,i)=>{const t=r.taken[i];
+    const b=el('button','slot');b.type='button';
+    const peg=el('span','peg',String(i+1));const tx=el('span','txt');tx.append(el('span',null,label));
+    if(t){b.classList.add(t.ok?'ok':'bad');tx.append(el('span','ans',(t.ok?t.ans:t.choice+' ✗ ('+t.ans+')')+' · '+nameOf(t.by)));b.disabled=true}
+    else if(r.answers){b.classList.add('rev');tx.append(el('span','ans',r.answers[i]));b.disabled=true}
+    else{b.classList.add('open');if(mine){b.classList.add('can');if(sel===i)b.classList.add('sel');b.onclick=()=>{sel=i;renderGame()}}else b.disabled=true}
+    b.append(peg,tx);g.append(b)});
+  const msg=$('#trayMsg'),btns=$('#trayBtns');btns.replaceChildren();
+  const host=amHost();
+  if(room.phase==='over'){const max=Math.max(...room.order.map(p=>room.scores[p]));
+    const w=room.order.filter(p=>room.scores[p]===max).map(nameOf);
+    msg.replaceChildren(el('span','winner',(w.length>1?'Vítězové: ':'Vítěz: ')+w.join(', ')+' ('+max+' b.)'));
+    if(host){const a=el('button','primary','Nová hra');a.onclick=()=>send({type:'start'});const b=el('button','ghost','Zpět do lobby');b.onclick=()=>send({type:'lobby'});btns.append(a,b)}
+    else btns.append(el('span','muted','Hostitel může spustit novou hru.'));
+  }else if(room.phase==='roundEnd'){msg.textContent='Konec kola. Body jsou připsané, správné odpovědi vidíte výše.';
+    if(host){const a=el('button','primary','Další kolo');a.onclick=()=>send({type:'next'});btns.append(a)}else btns.append(el('span','muted','Čeká se na hostitele.'))
+  }else if(mine){
+    if(sel==null){msg.textContent='Jsi na tahu. Vyber položku, nebo pasuj'+(r.pot[me.id]?' a schovej si '+r.pot[me.id]+' b.':'.');
+      const p=el('button','ghost','Pasovat');p.onclick=()=>send({type:'pass'});btns.append(p)}
+    else{msg.textContent=(sel+1)+'. '+card.items[sel]+' — tvoje odpověď:';
+      card.o.forEach(o=>{const b=el('button','primary',o);b.onclick=()=>{const i=sel;sel=null;send({type:'answer',i,choice:o})};btns.append(b)});
+      const z=el('button','ghost','Zpět');z.onclick=()=>{sel=null;renderGame()};btns.append(z)}
+  }else{msg.textContent='Na tahu je '+nameOf(r.turn)+(isOnline(r.turn)?'.':' (offline).');
+    if(host){const s=el('button','ghost small','Přeskočit hráče (pas)');s.onclick=()=>send({type:'skip'});btns.append(s)}}
+  if(!mine)sel=null;
+}
+
+$('#createBtn').onclick=create;$('#joinBtn').onclick=join;$('#leaveBtn').onclick=()=>leave(false);$('#startBtn').onclick=()=>send({type:'start'});
+$('#codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')join()});
+$('#nameIn').addEventListener('keydown',e=>{if(e.key==='Enter')($('#codeIn').value?join():create())});
+function copy(text,ok){if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>toast(ok),()=>toast(text));else toast(text)}
+$('#copyBtn').onclick=()=>copy(code,'Kód zkopírován');
+$('#shareBtn').onclick=()=>{const u=shareUrl();if(navigator.share)navigator.share({title:'Desítka po setmění',text:'Připoj se do hry, kód '+code,url:u}).catch(()=>{});else copy(u,'Odkaz zkopírován')};
+$('#targetSel').onchange=e=>send({type:'config',target:+e.target.value});
+$('#drinkSel').onchange=e=>send({type:'config',drinks:e.target.value==='1'});
+// po obnovení stránky se vrátí do místnosti
+if(/^[A-Z]{4}$/.test(h)&&me.name){code=h;connect()}
+</script>
+</body>
+</html>
