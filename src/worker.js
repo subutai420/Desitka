@@ -54,8 +54,9 @@ export class Room extends DurableObject {
         if (typeof msg.drinks === "boolean") s.drinks = msg.drinks;
         break;
       case "start":
-        if (!host || !s.players.length) return;
-        if (s.phase === "playing" || s.phase === "roundEnd") return;
+        // Po konci hry může novou hru spustit kdokoli z hráčů (hostitel mohl odejít).
+        if (!s.players.length || s.phase === "playing" || s.phase === "roundEnd") return;
+        if (!host && s.phase !== "over") return;
         this.startGame();
         break;
       case "answer": this.answer(pid, msg.i, msg.choice); break;
@@ -69,7 +70,7 @@ export class Room extends DurableObject {
         this.newRound((s.round.starter + 1) % s.order.length);
         break;
       case "lobby":
-        if (!host || s.phase !== "over") return;
+        if (s.phase !== "over") return;
         s.phase = "lobby"; s.round = null; s.order = null; s.scores = null; s.roundNo = 0;
         break;
       case "leave":

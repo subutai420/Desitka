@@ -91,7 +91,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <div class="wrap">
   <div class="brand">
     <div class="logo"><span class="ten">10</span>Desítka po setmění</div>
-    <span class="tag" id="roomTag" hidden></span>
+    <span class="row" style="flex:0 0 auto;align-items:center;gap:10px"><span class="tag" id="roomTag" hidden></span><button class="small ghost" id="exitBtn" hidden>Odejít</button></span>
   </div>
 
   <!-- HOME -->
@@ -172,7 +172,7 @@ let ws=null,code=null,room=null,sel=null,wantCreate=false,retry=0,closing=false,
 
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
 function show(id){['home','lobby','game'].forEach(s=>$('#'+s).hidden=s!==id);$('#tray').hidden=id!=='game';
-  $('#roomTag').hidden=id==='home';if(code)$('#roomTag').textContent='Místnost '+code}
+  $('#roomTag').hidden=id==='home';$('#exitBtn').hidden=id!=='game';if(code)$('#roomTag').textContent='Místnost '+code}
 function homeErr(t){const e=$('#homeErr');e.textContent=t||'';e.hidden=!t}
 function nameOf(id){return (room.names&&room.names[id])||(room.players.find(p=>p.id===id)||{}).name||'Hráč'}
 function isOnline(id){const p=room.players.find(p=>p.id===id);return p?p.online:false}
@@ -188,21 +188,23 @@ function getName(){const n=$('#nameIn').value.trim().slice(0,20);if(!n){homeErr(
 
 function connect(){
   closing=false;
-  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/'+code);
-  ws.onopen=()=>{retry=0;$('#conn').hidden=true;send({type:'join',pid:me.id,name:me.name,create:wantCreate})};
-  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+  const sock=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/'+code);
+  ws=sock;
+  sock.onopen=()=>{if(sock!==ws)return;retry=0;$('#conn').hidden=true;sock.send(JSON.stringify({type:'join',pid:me.id,name:me.name,create:wantCreate}))};
+  sock.onmessage=e=>{if(sock!==ws)return;let m;try{m=JSON.parse(e.data)}catch{return}
     if(m.type==='error'){homeErr(m.msg);leave(true);return}
     if(m.type==='state'){wantCreate=false;room=m.state;render()}};
-  ws.onclose=()=>{if(closing||!code)return;$('#conn').hidden=false;
-    setTimeout(()=>{if(code&&!closing)connect()},Math.min(8000,500*2**retry++))};
+  // Reaguje jen aktuální spojení; staré spojení po odchodu z místnosti už nic neobnovuje.
+  sock.onclose=()=>{if(sock!==ws||closing||!code)return;$('#conn').hidden=false;
+    setTimeout(()=>{if(sock===ws&&code&&!closing)connect()},Math.min(8000,500*2**retry++))};
 }
 
 function genCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ';return Array.from({length:4},()=>A[Math.floor(Math.random()*A.length)]).join('')}
 function create(){if(!getName())return;homeErr('');code=genCode();wantCreate=true;connect()}
 function join(){if(!getName())return;homeErr('');const c=$('#codeIn').value.trim().toUpperCase();
   if(!/^[A-Z]{4}$/.test(c)){homeErr('Kód má čtyři písmena.');return}code=c;wantCreate=false;connect()}
-function leave(silent){if(!silent)send({type:'leave'});closing=true;try{ws&&ws.close()}catch(e){}
-  ws=null;code=null;room=null;sel=null;history.replaceState(null,'',location.pathname);show('home')}
+function leave(silent){if(!silent)send({type:'leave'});closing=true;const old=ws;ws=null;try{old&&old.close()}catch(e){}
+  code=null;room=null;sel=null;history.replaceState(null,'',location.pathname);show('home')}
 
 function shareUrl(){return location.origin+location.pathname+'#'+code}
 
@@ -262,8 +264,10 @@ function renderGame(){
   if(room.phase==='over'){const max=Math.max(...room.order.map(p=>room.scores[p]));
     const w=room.order.filter(p=>room.scores[p]===max).map(nameOf);
     msg.replaceChildren(el('span','winner',(w.length>1?'Vítězové: ':'Vítěz: ')+w.join(', ')+' ('+max+' b.)'));
-    if(host){const a=el('button','primary','Nová hra');a.onclick=()=>send({type:'start'});const b=el('button','ghost','Zpět do lobby');b.onclick=()=>send({type:'lobby'});btns.append(a,b)}
-    else btns.append(el('span','muted','Hostitel může spustit novou hru.'));
+    const a=el('button','primary','Nová hra');a.onclick=()=>send({type:'start'});
+    const b=el('button','ghost','Zpět do lobby');b.onclick=()=>send({type:'lobby'});
+    const c=el('button','ghost','Nová místnost');c.onclick=()=>leave(false);
+    btns.append(a,b,c);
   }else if(room.phase==='roundEnd'){msg.textContent='Konec kola. Body jsou připsané, správné odpovědi vidíte výše.';
     if(host){const a=el('button','primary','Další kolo');a.onclick=()=>send({type:'next'});btns.append(a)}else btns.append(el('span','muted','Čeká se na hostitele.'))
   }else if(mine){
@@ -277,7 +281,7 @@ function renderGame(){
   if(!mine)sel=null;
 }
 
-$('#createBtn').onclick=create;$('#joinBtn').onclick=join;$('#leaveBtn').onclick=()=>leave(false);$('#startBtn').onclick=()=>send({type:'start'});
+$('#createBtn').onclick=create;$('#joinBtn').onclick=join;$('#leaveBtn').onclick=()=>leave(false);$('#exitBtn').onclick=()=>leave(false);$('#startBtn').onclick=()=>send({type:'start'});
 $('#codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')join()});
 $('#nameIn').addEventListener('keydown',e=>{if(e.key==='Enter')($('#codeIn').value?join():create())});
 function copy(text,ok){if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>toast(ok),()=>toast(text));else toast(text)}
